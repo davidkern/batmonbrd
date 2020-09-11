@@ -30,20 +30,22 @@ def led_set(dev_addr, value):
         reg_write(dev_addr, 0x06, 0x1000)
 
 def shunt_read(dev_addr):
-    """Shunt reading in uV"""
+    """Shunt reading in amperes, positive charge, negative discharge"""
     # LSB is 2.5uV
-    return reg_read_int16(dev_addr, 0x01) / 2.5
+    # Shunts are 75mV per 100A
+    return - reg_read_int16(dev_addr, 0x01) * 3.33e-3
 
 def bus_read(dev_addr):
-    """Bus reading in mV"""
+    """Bus reading in volts"""
     # LSB is 1.25mV
-    return reg_read_int16(dev_addr, 0x02) / 1.25
+    return reg_read_int16(dev_addr, 0x02) * 1.25e-3
 
 led = False
 
-alpha_accum = 0
-beta_accum = 0
-gamma_accum = 0
+# Accumulated energy in watt-hours (starts counting from charged)
+alpha_accum = 1280
+beta_accum = 1280
+gamma_accum = 1280
 
 # set alert limit to max possible bus-voltage so toggling
 # the bus-voltage undervoltage alert bit toggles the LED
@@ -62,7 +64,13 @@ try:
 except:
     pass
 
+last_time = time.monotonic()
+
+# below is sloppy math for a sanity check - will refactor to properly average and integrate
 while True:
+    current_time = time.monotonic()
+    delta_time = current_time - last_time
+
     try:
         alpha_shunt = shunt_read(0x40)
         alpha_bus = bus_read(0x40)
@@ -71,7 +79,7 @@ while True:
         alpha_bus = None
     
     if alpha_shunt is not None and alpha_bus is not None:
-        alpha_accum += alpha_shunt * alpha_bus
+        alpha_accum += alpha_shunt * alpha_bus * delta_time / 3600.0
     
     try:
         beta_shunt = shunt_read(0x41)
@@ -81,7 +89,7 @@ while True:
         beta_bus = None
 
     if beta_shunt is not None and beta_bus is not None:
-        beta_accum += beta_shunt * beta_bus
+        beta_accum += beta_shunt * beta_bus * delta_time / 3600.0
 
     try:
         gamma_shunt = shunt_read(0x42)
@@ -91,7 +99,9 @@ while True:
         gamma_bus = None
 
     if gamma_shunt is not None and gamma_bus is not None:
-        gamma_accum += gamma_shunt * gamma_bus
+        gamma_accum += gamma_shunt * gamma_bus * delta_time / 3600.0
+
+    last_time = current_time
 
     led = not led
 
@@ -110,9 +120,11 @@ while True:
     except:
         pass
 
-    print(",".join([
-        str(alpha_bus), str(alpha_shunt), str(alpha_accum),
-        str(beta_bus), str(beta_shunt), str(beta_accum),
-        str(gamma_bus), str(gamma_shunt), str(gamma_accum)]))
+    
+    print("{:.2f},{:.2f},{:.2f},{:.2f},{:.2f},{:.2f},{:.2f},{:.2f},{:.2f},{:.2f}".format(
+        alpha_bus, alpha_shunt, alpha_accum,
+        beta_bus, beta_shunt, beta_accum,
+        gamma_bus, gamma_shunt, gamma_accum,
+        alpha_accum + beta_accum + gamma_accum))
 
     time.sleep(0.1)
