@@ -128,17 +128,29 @@
 
 #     time.sleep(0.1)
 
+import time
+
+OUTPUT_PERIOD = 1.0
+
 def main():
     from i2cbus import I2CBus
-    from ina226 import INA226
+    from ina226 import INA226Client
 
     i2c = I2CBus()
 
     devices = [
-        INA226(i2c, 0x40),
-        INA226(i2c, 0x41),
-        INA226(i2c, 0x42)
+        INA226Client(i2c, 0x40),
+        INA226Client(i2c, 0x41),
+        INA226Client(i2c, 0x42)
     ]
+
+    last_output_time = time.monotonic()
+    while True:
+        measurements = [device.measurement().to_json() for device in devices]
+        output_time = time.monotonic()
+        if output_time < last_output_time or last_output_time + OUTPUT_PERIOD < output_time:
+            last_output_time = output_time
+            print(f"[{','.join(measurements)}]")
 
 if __name__ == "__main__":
     main()

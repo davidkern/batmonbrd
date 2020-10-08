@@ -1,4 +1,6 @@
 import busio
+import board
+import struct
 
 
 class I2CBus:

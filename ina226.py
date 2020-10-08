@@ -1,3 +1,6 @@
+import time
+
+
 SOC_MAX = 1280  # Fully charged is 1280 Whr
 LED_FREQUENCY_MAX = 10  # Frequency in Hz
 
@@ -12,6 +15,13 @@ class Measurement:
         self.voltage = voltage
         self.current = current
         self.soc = soc
+    
+    def to_json(self):
+        """
+        Convert to json using string interpolation to work-around lack
+        of (u)json module on serpente's CircuitPython
+        """
+        return f'{{"ts": {self.timestamp:f}, "voltage": {self.voltage:.3f}, "current": {self.current:.3f}, "soc": {self.soc:.3f}}}'
 
 
 class INA226Client:
@@ -41,8 +51,11 @@ class INA226Client:
         # LSB is 1.25mV
         return self.i2c.reg_read_int16(self.address, 2) * 1.25e-3
 
-    def measurement(self, timestamp):
+    def measurement(self, timestamp=None):
         """Take a measurement"""
+        if timestamp is None:
+            timestamp = time.monotonic()
+
         measurement = Measurement(
             timestamp,
             self.read_bus(),
@@ -56,12 +69,12 @@ class INA226Client:
                 mean_voltage = (self.last_measurement.voltage + measurement.voltage) / 2.0
                 mean_current = (self.last_measurement.current + measurement.current) / 2.0
                 mean_power = mean_voltage * mean_current
-                measurement.soc = last_measurement.soc + mean_power * delta
+                measurement.soc = self.last_measurement.soc + mean_power * delta / 3600.0
             else:
                 # wrapped around, use last soc calculation
                 measurement.soc = self.last_measurement.soc
         
-        last_measurement = measurement
+        self.last_measurement = measurement
 
         return measurement
 
